@@ -6,24 +6,25 @@ import util
 # Data: daily data or else
 # Mode: Only ! Sell ! and ! Buy ! available
 # Learn: Whether we are training. If we are testing, set to False
-def Simulate(rl, data, numTrial = 200, learn=True):
+def Simulate(rl, orderbooks, numTrial = 200, learn=True):
 
-    def buildOrder(remain, action, Sect, pre_order):
+    def buildOrder(remain, action, orderbook):
         # Find the Action, we build the order (According to the Sects[0])
         if action == 'MO':
-            Order = util.SellOrder(remain, action, Sect, pre_order)
+            Order = util.SellOrder(remain, action, orderbook)
         else:
-            price = Sect[10] - 0.01 * int(action)
-            Order = util.SellOrder(remain, price, Sect, pre_order)
+            price = orderbook.ask_prices[0] - 0.01 * int(action)
+            Order = util.SellOrder(remain, price, orderbook)
         return Order
 
     # Get the Reward and Newstate after taking action in Simulate with Sects
-    def ActEnv(rl, iter, volume, action, Sects, pre_order=None):
+    def ActEnv(rl, iter, volume, action, orderbooks):
         # Build Order
-        order = buildOrder(volume, action, Sects[0], pre_order)
+        order = buildOrder(volume, action, orderbooks[0])
 
-        # Simulate the Order with Sects
-        order.SimTrade(Sects)
+        # Simulate the Order
+        for orderbook in orderbooks[1:]:
+            order.SimTrade(util.OrderBook(orderbook))
         remain = volume - order.fill
 
         # Different Reward Calculate by Different Mode
@@ -37,25 +38,28 @@ def Simulate(rl, data, numTrial = 200, learn=True):
         return reward, newState, remain, order
 
     # Define the expected price
-    start_mid = (data[0][0] + data[0][10])/2
+    init = util.OrderBook(orderbooks[0])
+    start_mid = init.get_mid_price()
 
     # When we simulate a buy process for numTrial time
     for j in range(numTrial):
         remain = rl.mdp.totalVol
         state = rl.mdp.startState()
         sequences = []
-        pre_order = None
+
+        # Sects: a list contains series of orderbooks
         for i in range(rl.mdp.timeLevel + 1):
             if state is None:
                 break
             if i == rl.mdp.timeLevel:
-                Sects = [data[-1]]
+                Sects = [util.OrderBook(orderbooks[-1])]
             else:
-                Sects = data[i*rl.mdp.timeGap: (i+1)*rl.mdp.timeGap]
+                ob_data = orderbooks[i*rl.mdp.timeGap: (i+1)*rl.mdp.timeGap]
+                Sects = [util.OrderBook(ob) for ob in ob_data]
 
             action = rl.getAction(state, learn)
             reward, newState, remain, pre_order = ActEnv(rl, iter=i, volume=remain, action=action,
-                                                         Sects=Sects, pre_order=pre_order)
+                                                         orderbooks=Sects)
             sequences.append((state, action, reward, newState))
             state = newState
 
