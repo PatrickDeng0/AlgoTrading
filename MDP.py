@@ -51,10 +51,10 @@ class TradeMDP:
 
     # Given the accurate digit, we decide the state it is in
     def JudgeState(self, digit):
-        if digit[1] == 0:
+        if int(digit[1]) == 0:
             return
         volState = ((digit[1]-1) // self.eachVol) + 1
-        return digit[0], volState
+        return digit[0], int(volState)
 
 
 ############################################################

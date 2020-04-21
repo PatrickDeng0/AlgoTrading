@@ -1,4 +1,6 @@
-import util
+import util, MDP
+import pandas as pd
+import numpy as np
 
 ############################################################
 # Simulate the whole process for numTrial times
@@ -6,7 +8,7 @@ import util
 # Data: daily data or else
 # Mode: Only ! Sell ! and ! Buy ! available
 # Learn: Whether we are training. If we are testing, set to False
-def Simulate(rl, orderbooks, numTrial = 200, learn=True):
+def Simulate(rl, orderbooks, numTrial=200, learn=True):
 
     def buildOrder(remain, action, orderbook):
         # Find the Action, we build the order (According to the Sects[0])
@@ -24,7 +26,7 @@ def Simulate(rl, orderbooks, numTrial = 200, learn=True):
 
         # Simulate the Order
         for orderbook in orderbooks[1:]:
-            order.SimTrade(util.OrderBook(orderbook))
+            order.SimTrade(orderbook)
         remain = volume - order.fill
 
         # Different Reward Calculate by Different Mode
@@ -55,7 +57,7 @@ def Simulate(rl, orderbooks, numTrial = 200, learn=True):
                 Sects = [util.OrderBook(orderbooks[-1])]
             else:
                 ob_data = orderbooks[i*rl.mdp.timeGap: (i+1)*rl.mdp.timeGap]
-                Sects = [util.OrderBook(ob) for ob in ob_data]
+                Sects = [util.OrderBook(row=ob) for ob in ob_data]
 
             action = rl.getAction(state, learn)
             reward, newState, remain, pre_order = ActEnv(rl, iter=i, volume=remain, action=action,
@@ -76,3 +78,15 @@ def Simulate(rl, orderbooks, numTrial = 200, learn=True):
             return sum([sequence[2] for sequence in sequences])
     # Explore probability upgrade if learn!
     rl.update_prob()
+
+
+if __name__ == '__main__':
+
+    # Usage: read orderbook data (depth of 5 or full depth, both okay)
+    data_dir = '../Data/'
+    orderbooks = pd.read_csv(data_dir + 'orderbook.csv')
+    demo = orderbooks.loc[:5000].values
+
+    mdp = MDP.TradeMDP(totalVol=10000, voLevel=10, timeLevel=1000, priceFlex=3, timeGap=5)
+    rl = MDP.QLearningAlgorithm(mdp=mdp, exploreStep=20)
+    reward = Simulate(rl, orderbooks=demo)
