@@ -17,7 +17,7 @@ def div(nu, de, alpha=1):
 
 
 def mid(order_book_df):
-    return order_book_df.iloc[:, -1]
+    return order_book_df.iloc[:, -3]
 
 
 def order_flow(order_book_df, transaction_df, lag=50):
