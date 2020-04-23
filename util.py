@@ -153,7 +153,7 @@ class OrderBook:
         return direct
 
     # Full: show the full depth of orderbook, or depth = self.depth
-    def show_order_book(self, full=False):
+    def show_order_book(self, trade_direction, full=False):
         def cut_depth(prices, sizes, depth):
             pad_prices = prices.copy()
             res_sizes = [sizes[price] for price in pad_prices]
@@ -178,7 +178,7 @@ class OrderBook:
                         bid_prices[i], bid_sizes[i]])
 
         # Add the mid_price of each orderbook (Using new consideration)
-        res.extend([self.get_mid_price(), self.trade_price, self.trade_size])
+        res.extend([self.get_mid_price(), self.trade_price, self.trade_size, trade_direction])
         return np.array(res)
 
     def show_header(self):
@@ -186,7 +186,7 @@ class OrderBook:
         for i in range(self.depth):
             header += ["ask_px{}".format(i + 1), "ask_sz{}".format(i + 1), "bid_px{}".format(i + 1),
                        "bid_sz{}".format(i + 1)]
-        header.extend(['mid_price', 'trade_price', 'trade_size'])
+        header.extend(['mid_price', 'trade_price', 'trade_size', 'trade_direction'])
         return np.array(header)
 
 
@@ -264,7 +264,7 @@ class SellOrder:
             self.updateStatus(orderbook.ask_prices[0], self.unfill)
 
 
-def preprocess_data(quote_dir, trade_dir, out_order_book_filename, out_transaction_filename):
+def preprocess_data(quote_dir, trade_dir, out_order_book_filename):
     print("Start pre-processing data")
     start_time = dt.datetime.now()
     df_quote = pd.read_csv(quote_dir)
@@ -297,11 +297,6 @@ def preprocess_data(quote_dir, trade_dir, out_order_book_filename, out_transacti
 
     trade_index = 0
     quote_index = 0
-    transactions = []
-
-    def add_transactions(trade_idx, direction):
-        trade = df_trade[trade_idx]
-        transactions.append([trade[T_PRICE], trade[T_SIZE], direction])
 
     def handle_trade(trade_idx, rec):
         current_trade = df_trade[trade_idx]
@@ -310,8 +305,7 @@ def preprocess_data(quote_dir, trade_dir, out_order_book_filename, out_transacti
 
             # Notice that if use full depth, there might be errors in the columns names
             # Should take care!
-            rec.writerow(order_book.show_order_book(full=False))
-            add_transactions(trade_idx, _direction)
+            rec.writerow(order_book.show_order_book(_direction, full=False))
 
     def handle_quote(quote_idx):
         order_book.handle_quote(df_quote[quote_idx])
@@ -333,8 +327,6 @@ def preprocess_data(quote_dir, trade_dir, out_order_book_filename, out_transacti
             handle_quote(quote_index)
             quote_index += 1
 
-    pd.DataFrame(transactions).to_csv(out_transaction_filename, header=['tx_price', 'tx_size', 'tx_direction'], index=False)
-
     print('Finished pre-processing data, {0:.3f} seconds'.format((dt.datetime.now() - start_time).total_seconds()))
 
     return
@@ -344,4 +336,4 @@ if __name__ == '__main__':
     # testing
     data_dir = '../Data/'
     preprocess_data(data_dir + 'INTC_quote_20120621.csv', data_dir + 'INTC_trade_20120621.csv',
-                    data_dir + 'orderbook.csv', data_dir + 'transaction.csv')
+                    data_dir + 'orderbook.csv')
