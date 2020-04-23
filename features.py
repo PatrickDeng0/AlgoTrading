@@ -294,6 +294,10 @@ def all_features(ob, lag=50):
     return pd.concat(features, axis=1)
 
 
+def get_quantile(feature_df, quantile_points):
+    return feature_df.quantile(quantile_points)
+
+
 if __name__ == "__main__":
     order_book_filename = './data/order_book.csv'
     o = pd.read_csv(order_book_filename)
