@@ -5,8 +5,8 @@ import time
 """
 All feature functions assume the same number of rows in order book and trades
 i.e. order book only updates upon new trades
-Order book columns: ask_px1, ask_sz1, bid_px1, bid_sz1, ask_px2, ask_sz2, bid_px2, bid_sz2...
-Transactions columns: price, size, direction (-1 for sell, 1 for buy, na for mid price transactions)
+Order book columns: ask_px1, ask_sz1, bid_px1, bid_sz1, ask_px2, ask_sz2, bid_px2, bid_sz2..., mid_price
+Transactions columns: trade_price, trade_size, trade_direction (-1 for sell, 1 for buy, na for mid price transactions)
 """
 
 
@@ -17,7 +17,7 @@ def div(nu, de, alpha=1):
 
 
 def mid(order_book_df):
-    return order_book_df.iloc[:, -3]
+    return order_book_df['mid_price']
 
 
 def order_flow(order_book_df, transaction_df, lag=50):
@@ -37,11 +37,11 @@ def order_flow(order_book_df, transaction_df, lag=50):
     Intuition: a small actual spread combined with a strongly positive actual market imbalance
                would indicate buying pressure.
     """
-    flow = pd.concat([order_book_df[['ask_sz1', 'bid_sz1']], transaction_df[['tx_size', 'tx_direction']]], axis=1)
+    flow = pd.concat([order_book_df[['ask_sz1', 'bid_sz1']], transaction_df[['trade_size', 'trade_direction']]], axis=1)
     flow['buy_vol'] = 0
     flow['sell_vol'] = 0
-    flow.loc[flow['tx_direction'] == 1, 'buy_vol'] = flow['tx_size']
-    flow.loc[flow['tx_direction'] == -1, 'sell_vol'] = flow['tx_size']
+    flow.loc[flow['trade_direction'] == 1, 'buy_vol'] = flow['trade_size']
+    flow.loc[flow['trade_direction'] == -1, 'sell_vol'] = flow['trade_size']
     flow['order_flow_buy'] = div(flow['buy_vol'].rolling(lag).sum(), flow['ask_sz1'])
     flow['order_flow_sell'] = div(flow['sell_vol'].rolling(lag).sum(), flow['bid_sz1'])
 
@@ -53,7 +53,7 @@ def order_flow(order_book_df, transaction_df, lag=50):
         flow['buy_vol'].rolling(lag, min_periods=1).sum() - flow['sell_vol'].rolling(lag, min_periods=1).sum()
     flow['relative_mkt_imb'] = div(flow['actual_spread'], flow['actual_mkt_imb'])
 
-    return flow.drop(columns=['ask_sz1', 'bid_sz1', 'tx_size', 'tx_direction', 'buy_vol', 'sell_vol'])
+    return flow.drop(columns=['ask_sz1', 'bid_sz1', 'trade_size', 'trade_direction', 'buy_vol', 'sell_vol'])
 
 
 def liquidity_imbalance(order_book_df):
@@ -109,19 +109,19 @@ def aggressiveness(order_book_df, transaction_df, lag=50):
     """
     df = pd.concat([order_book_df[['ask_px1', 'bid_px1']], transaction_df], axis=1)
 
-    is_aggr_sell = (df['tx_direction'] == -1) & (df['tx_price'] <= df['ask_px1'].shift(1))
+    is_aggr_sell = (df['trade_direction'] == -1) & (df['trade_price'] <= df['ask_px1'].shift(1))
     df['aggr_sell_size'] = 0
-    df.loc[is_aggr_sell, 'aggr_sell_size'] = df['tx_size']
+    df.loc[is_aggr_sell, 'aggr_sell_size'] = df['trade_size']
     df['sell_tx_size'] = 0
-    df.loc[df['tx_direction'] == -1, 'sell_tx_size'] = df['tx_size']
+    df.loc[df['trade_direction'] == -1, 'sell_tx_size'] = df['trade_size']
     aggr_sell_ratios = div(
         df['aggr_sell_size'].rolling(lag, min_periods=1).sum(), df['sell_tx_size'].rolling(lag, min_periods=1).sum())
 
-    is_aggr_buy = (df['tx_direction'] == 1) & (df['tx_price'] >= df['bid_px1'].shift(1))
+    is_aggr_buy = (df['trade_direction'] == 1) & (df['trade_price'] >= df['bid_px1'].shift(1))
     df['aggr_buy_size'] = 0
-    df.loc[is_aggr_buy, 'aggr_buy_size'] = df['tx_size']
+    df.loc[is_aggr_buy, 'aggr_buy_size'] = df['trade_size']
     df['buy_tx_size'] = 0
-    df.loc[df['tx_direction'] == -1, 'buy_tx_size'] = df['tx_size']
+    df.loc[df['trade_direction'] == -1, 'buy_tx_size'] = df['trade_size']
     aggr_buy_ratios = div(
         df['aggr_buy_size'].rolling(lag, min_periods=1).sum(), df['buy_tx_size'].rolling(lag, min_periods=1).sum())
 
@@ -137,7 +137,7 @@ def effective_spread(order_book_df, transaction_df):
                fell away from the simple mid price.
     """
     mid_price = mid(order_book_df)
-    return pd.DataFrame({'eff_spread': (transaction_df['tx_price'] / mid_price - 1) * 1000})
+    return pd.DataFrame({'eff_spread': (transaction_df['trade_price'] / mid_price - 1) * 1000})
 
 
 def illiquidity(order_book_df, lag=50):
@@ -271,32 +271,32 @@ def technical_indicators(mid_price):
     return pd.DataFrame(tech)
 
 
-def all_features(order_book_df, transaction_df, lag=50):
+def all_features(ob, lag=50):
     start_t = time.time()
     print("Start creating features from order books and transactions data")
-    features = []
-    mid_price = mid(order_book_df)
-    features.append(order_flow(order_book_df, transaction_df, lag))
-    features.append(liquidity_imbalance(order_book_df))
-    features.append(relative_mid_trend(order_book_df))
-    features.append(volatility(order_book_df, lag))
-    features.append(aggressiveness(order_book_df, transaction_df, lag))
-    features.append(effective_spread(order_book_df, transaction_df))
-    features.append(illiquidity(order_book_df, lag))
-    features.append(relative_vol(order_book_df))
-    features.append(volume_depth(order_book_df))
-    features.append(volume_rank(order_book_df))
-    features.append(ask_bid_correlation(order_book_df, lag))
-    features.append(technical_indicators(mid_price))
+    order_book_df = ob.drop(columns=['time', 'trade_price', 'trade_size', 'trade_direction'])
+    transaction_df = ob[['trade_price', 'trade_size', 'trade_direction']]
+    features = [
+        order_flow(order_book_df, transaction_df, lag),
+        liquidity_imbalance(order_book_df),
+        relative_mid_trend(order_book_df),
+        volatility(order_book_df, lag),
+        aggressiveness(order_book_df, transaction_df, lag),
+        effective_spread(order_book_df, transaction_df),
+        illiquidity(order_book_df, lag),
+        relative_vol(order_book_df),
+        volume_depth(order_book_df),
+        volume_rank(order_book_df),
+        ask_bid_correlation(order_book_df, lag),
+        technical_indicators(mid(order_book_df))
+    ]
     print("Finished creating features, time lapse: {0:.3f} seconds".format(time.time() - start_t))
     return pd.concat(features, axis=1)
 
 
 if __name__ == "__main__":
     order_book_filename = './data/order_book.csv'
-    transaction_filename = './data/transaction.csv'
     o = pd.read_csv(order_book_filename)
-    t = pd.read_csv(transaction_filename)
     lag = 50
-    f = all_features(o, t)
+    f = all_features(o)
     f.to_csv("./data/raw_features.csv")
