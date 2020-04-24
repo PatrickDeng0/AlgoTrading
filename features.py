@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 import time
+from scipy.stats import norm
+from scipy.stats import rankdata
 
 """
 All feature functions assume the same number of rows in order book and trades
@@ -296,6 +298,36 @@ def all_features(ob, lag=50):
 
 def get_quantile(feature_df, quantile_points):
     return feature_df.quantile(quantile_points)
+
+
+def quantile_3sigma():
+    return [0, norm.cdf(-3), norm.cdf(-2), norm.cdf(-1), norm.cdf(0), norm.cdf(1), norm.cdf(2), norm.cdf(3), 1]
+
+
+def mad_discretize(feature_df, quantile_points, threshold=3.5):
+    tmp_f = feature_df.fillna(0)
+    m1_diff_abs = (tmp_f - tmp_f.median()).abs()
+    mad = m1_diff_abs.median()
+    score = norm.ppf(0.75) * m1_diff_abs / mad
+    score = score.fillna(0)
+
+    for col in tmp_f.columns:
+        col_median = tmp_f[col].median()
+        sign = (tmp_f.loc[score[col] > threshold, col] > col_median) * 2 - 1
+        width = threshold * mad[col] / norm.ppf(0.75)
+        tmp_f.loc[score[col] > threshold, col] = col_median + sign * width
+        tmp_f[col] = pd.qcut(tmp_f[col], quantile_points, duplicates='drop', labels=False)
+
+    return tmp_f
+
+
+def rank_discretize(feature_df, quantile_points):
+    tmp_f = feature_df.fillna(0)
+
+    for col in tmp_f.columns:
+        tmp_f[col] = pd.qcut(rankdata(tmp_f[col]), quantile_points, duplicates='drop', labels=False)
+
+    return tmp_f
 
 
 if __name__ == "__main__":
