@@ -3,13 +3,14 @@ import pandas as pd
 from features import *
 
 
+
 ############################################################
 # Simulate the whole process for numTrial times
 # rl: the defined RL problem we have construct
 # Data: daily data or else
 # Mode: Only ! Sell ! and ! Buy ! available
 # Learn: Whether we are training. If we are testing, set to False
-def Simulate(rl, orderbooks_df, transaction_df, quantile_df, time_frame, FeatureNum, numTrial=200, learn=True):
+def Simulate(rl, orderbooks_df, transaction_df, quantile_df, time_frame, FeatureNum, numTrial=50, learn=True):
     def buildOrder(remain, action, orderbook):
         # Find the Action, we build the order (According to the Sects[0])
         if action == 'MO':
@@ -53,15 +54,25 @@ def Simulate(rl, orderbooks_df, transaction_df, quantile_df, time_frame, Feature
         reward = order.turnover - start_mid * order.fill
 
         # Notice that FeatureNum !=  feature function number
-        # feature function name:
-        # volatility,relative_mid_trend,illiquidity,volume_depth
 
-        feature_name = quantile_df.columns.drop('Unnamed: 0')
+
+        feature_name = quantile_df.columns
 
         feature_rank = []
-        feature_rank += rank_calculation(volatility, orderbooks_df, quantile_df, transaction_df, False, feature_name[0])
+
         feature_rank += rank_calculation(order_flow, orderbooks_df, quantile_df, transaction_df, True,
-                                         *feature_name[1:])
+                                         *feature_name[0:6])
+
+        feature_rank += rank_calculation(liquidity_imbalance, orderbooks_df, quantile_df, transaction_df, False,
+                                         feature_name[6])
+
+        feature_rank += rank_calculation(relative_mid_trend, orderbooks_df, quantile_df, transaction_df, False,
+                                         feature_name[7])
+
+        feature_rank += rank_calculation(volatility, orderbooks_df, quantile_df, transaction_df, False, feature_name[8])
+
+        feature_rank += rank_calculation(effective_spread, orderbooks_df, quantile_df, transaction_df, True,
+                                         feature_name[9])
 
         # Newstate Define
         if iter == rl.mdp.timeLevel:
@@ -97,7 +108,8 @@ def Simulate(rl, orderbooks_df, transaction_df, quantile_df, time_frame, Feature
             action = rl.getAction(state, learn)
 
             reward, newState, remain, pre_order = ActEnv(rl, iter=i, volume=remain, action=action,
-                                                         orderbooks=Sects, orderbooks_df=Sects_df, quantile_df=quantile_df)
+                                                         orderbooks=Sects, orderbooks_df=Sects_df,
+                                                         quantile_df=quantile_df)
             sequences.append((state, action, reward, newState))
             state = newState
 
@@ -121,28 +133,37 @@ def Simulate(rl, orderbooks_df, transaction_df, quantile_df, time_frame, Feature
     rl.update_prob()
 
 
-
 if __name__ == '__main__':
-
     # Usage: Currently, we cannot take too much features
     # If one wishes to run directly, we only apply 'volatility' and 'order_flow' in features.
     data_dir = '../Data/'
-    orderbooks = pd.read_csv(data_dir + 'orderbook.csv')
+    orderbooks = pd.read_csv(data_dir + 'orderbook_C_20200427.csv')
     order_book_df = orderbooks.drop(columns=['time', 'trade_price', 'trade_size', 'trade_direction'])
     transaction_df = orderbooks[['trade_price', 'trade_size', 'trade_direction']]
     f = pd.read_csv(data_dir + 'raw_features.csv')
-    quantile = get_quantile(f, [0.33, 0.66])
-    FeatureNum = len(quantile.columns) - 1
-    timeGap = 1000
+    quantile = get_quantile(f[['order_flow_buy', 'order_flow_sell', 'actual_spread', 'relative_spread',
+       'actual_mkt_imb', 'relative_mkt_imb','liq_imb','rel_mid_trend', 'vol','eff_spread']], [0.33, 0.66])
+    FeatureNum = len(quantile.columns)
+    # 一天orderbook里一共有57600个时间点，假设共分成4个time level，那么timeGap=57600/4=14400
+    timeGap = 14400
     timeLevel = 4
     total_time = timeLevel * timeGap  # timeframe
+    print('running')
 
     mdp = MDP.TradeMDP(totalVol=10000, voLevel=5, timeLevel=timeLevel, priceFlex=3, timeGap=timeGap, FeatureLevel=3,
                        FeatureNum=FeatureNum)
 
     q_algo = MDP.QLearningAlgorithm(mdp, 100)
 
-    Simulate(q_algo, order_book_df, transaction_df, quantile, FeatureNum=2, time_frame=total_time, numTrial=200)
+    Simulate(q_algo, order_book_df, transaction_df, quantile, FeatureNum=FeatureNum, time_frame=total_time, numTrial=200)
 
-    reward = Simulate(q_algo, order_book_df, transaction_df, quantile, FeatureNum=2, \
+    # 用新一天的数据来test
+    test_order_books=pd.read_csv(data_dir + 'orderbook_C_20200428.csv')
+    test_order_book_df = test_order_books.drop(columns=['time', 'trade_price', 'trade_size', 'trade_direction'])
+    test_transaction_df = test_order_books[['trade_price', 'trade_size', 'trade_direction']]
+
+    reward = Simulate(q_algo, test_order_book_df, test_transaction_df, quantile, FeatureNum=FeatureNum, \
                       time_frame=total_time, numTrial=200, learn=False)
+
+    print(reward)
+
