@@ -44,8 +44,9 @@ class OrderBook:
                 self.bids[row[bid_price]] = row[bid_price + 1]
         self.update()
 
-        self.trade_price = row[-2]
-        self.trade_size = row[-1]
+        # trade price and trade size were wrong, I adjusted their absolute positions.
+        self.trade_price = row[-3]
+        self.trade_size = row[-2]
 
     # Update best bid and ask price, for convenience in comparison
     # And Update the history of this order book, finally output to a csv
@@ -232,6 +233,7 @@ class SellOrder:
         # If we are not Market Order,
         if not isinstance(self.price, str):
             if not np.isnan(orderbook.trade_price):
+
                 # There is trade happening, and our price is better than the trade price, then we could trade
                 # The trade price for us will be the same as trade price
                 # But the amount is up to 10% of the total trade size for less market impact in our model
@@ -247,6 +249,7 @@ class SellOrder:
                     self.rank = max(0, remain)
                     if remain < 0:
                         size = min(-remain * 0.1, self.unfill)
+
                 self.updateStatus(orderbook.trade_price, size)
 
             # After matching trade, or there is no trade, then we could only update rank
@@ -334,6 +337,6 @@ def preprocess_data(quote_dir, trade_dir, out_order_book_filename):
 
 if __name__ == '__main__':
     # testing
-    data_dir = '../Data/'
-    preprocess_data(data_dir + 'INTC_quote_20120621.csv', data_dir + 'INTC_trade_20120621.csv',
-                    data_dir + 'orderbook.csv')
+    data_dir = './'
+    preprocess_data(data_dir + 'GE_quotes.csv', data_dir + 'GE_trades.csv',
+                    data_dir + 'orderbook_new.csv')
