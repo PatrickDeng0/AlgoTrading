@@ -4,6 +4,7 @@ import time
 from scipy.stats import norm
 from scipy.stats import rankdata
 
+
 """
 All feature functions assume the same number of rows in order book and trades
 i.e. order book only updates upon new trades
@@ -57,7 +58,7 @@ def order_flow(order_book_df, transaction_df, lag=50):
 
     return flow.drop(columns=['ask_sz1', 'bid_sz1', 'trade_size', 'trade_direction', 'buy_vol', 'sell_vol'])
 
-
+'''
 def liquidity_imbalance(order_book_df):
     """
     liquidity imbalance at level i = ask_vol_i / (ask_vol_i + bid_vol_i)
@@ -69,7 +70,25 @@ def liquidity_imbalance(order_book_df):
         liq_imb['liq_imb_{}'.format(i)] = a / (a + b)
 
     return pd.DataFrame(liq_imb)
+'''
 
+
+def liquidity_imbalance(order_book_df):
+    """
+    liquidity imbalance at all levels combined = sum(ask_vol_i) / sum(ask_vol_i + bid_vol_i)
+    This feature is constructed according to the ppt.
+    """
+    liq_imb = {}
+    n = len(order_book_df)
+    a, b = np.zeros(n), np.zeros(n)
+
+    for i in range(1, int(order_book_df.shape[1] / 4)):
+        a += order_book_df['ask_sz{}'.format(i)]
+        b += order_book_df['bid_sz{}'.format(i)]
+
+    liq_imb['liq_imb'] = a / (a + b)
+
+    return pd.DataFrame(liq_imb)
 
 def relative_mid_trend(order_book_df):
     """
@@ -279,18 +298,8 @@ def all_features(ob, lag=50):
     order_book_df = ob.drop(columns=['time', 'trade_price', 'trade_size', 'trade_direction'])
     transaction_df = ob[['trade_price', 'trade_size', 'trade_direction']]
     features = [
-        order_flow(order_book_df, transaction_df, lag),
-        liquidity_imbalance(order_book_df),
-        relative_mid_trend(order_book_df),
         volatility(order_book_df, lag),
-        aggressiveness(order_book_df, transaction_df, lag),
-        effective_spread(order_book_df, transaction_df),
-        illiquidity(order_book_df, lag),
-        relative_vol(order_book_df),
-        volume_depth(order_book_df),
-        volume_rank(order_book_df),
-        ask_bid_correlation(order_book_df, lag),
-        technical_indicators(mid(order_book_df))
+        order_flow(order_book_df, transaction_df, lag)
     ]
     print("Finished creating features, time lapse: {0:.3f} seconds".format(time.time() - start_t))
     return pd.concat(features, axis=1)
@@ -331,8 +340,9 @@ def rank_discretize(feature_df, quantile_points):
 
 
 if __name__ == "__main__":
-    order_book_filename = './data/order_book.csv'
+    data_dir = '../Data/'
+    order_book_filename = data_dir+'orderbook_new.csv'
     o = pd.read_csv(order_book_filename)
     lag = 50
     f = all_features(o)
-    f.to_csv("./data/raw_features.csv")
+    f.to_csv(data_dir+"raw_features.csv")
