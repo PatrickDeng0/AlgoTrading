@@ -17,8 +17,11 @@ def Simulate(rl, orderbooks_df, transaction_df, quantile_df, time_frame, start_t
 
             Order = util.SellOrder(remain, action, orderbook)
         else:
-            spread = (orderbook.ask_prices[0]-orderbook.bid_prices[0])
-            price = orderbook.ask_prices[0] - spread/4 * int(action)
+            try:
+                spread = (orderbook.ask_prices[0]-orderbook.bid_prices[0])
+            except:
+                spread = 0
+            price = orderbook.ask_prices[0] - round(spread/4 * int(action),2)
             Order = util.SellOrder(remain, price, orderbook)
         return Order
 
