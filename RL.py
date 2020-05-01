@@ -1,7 +1,7 @@
 import util, MDP
 import pandas as pd
 from features import *
-
+from SL import SL_Policy
 
 
 ############################################################
@@ -17,7 +17,8 @@ def Simulate(rl, orderbooks_df, transaction_df, quantile_df, time_frame, start_t
 
             Order = util.SellOrder(remain, action, orderbook)
         else:
-            price = orderbook.ask_prices[0] - 0.01 * int(action)
+            spread = (orderbook.ask_prices[0]-orderbook.bid_prices[0])
+            price = orderbook.ask_prices[0] - spread/4 * int(action)
             Order = util.SellOrder(remain, price, orderbook)
         return Order
 
@@ -167,53 +168,69 @@ if __name__ == '__main__':
     timeLevel = 5
     total_time = timeLevel * timeGap  # timeframe
     epoch=200
-    train_start_time = 0
-    train_end_time = total_time*epoch
 
-    division = int((train_end_time-train_start_time)/total_time)
-    print('division:',division)
-
-    test_start_time = train_end_time
-    test_end_time = test_start_time+total_time*epoch
     # orderbooks only appears here
     orderbooks = pd.read_csv('orderbook_CPE.csv')
 
     lag = 50
     f = all_features(orderbooks)
-
-
-    '''
-    quantile = get_quantile(f[['order_flow_buy', 'order_flow_sell', 'actual_spread', 'relative_spread',
-       'actual_mkt_imb', 'relative_mkt_imb','liq_imb','rel_mid_trend', 'vol','eff_spread']], [0.33, 0.66])
-    
-    '''
     quantile = get_quantile(f[['vol']],
                             [0.33, 0.66])
-
 
     FeatureNum = len(quantile.columns)
 
     print('running')
 
-    mdp = MDP.TradeMDP(totalVol=100, voLevel=5, timeLevel=timeLevel, priceFlex=4, timeGap=timeGap, FeatureLevel=3,
-                       FeatureNum=FeatureNum)
+    RL_reward_list=[]
 
-    q_algo = MDP.QLearningAlgorithm(mdp, 50)
-
-    for i in range(division):
-
-        order_book_df = orderbooks.drop(columns=['trade_price', 'trade_size', 'trade_direction']).loc[i*total_time:(i+1)*total_time]
-        transaction_df = orderbooks[['trade_price', 'trade_size', 'trade_direction']].loc[i * total_time: (i + 1) * total_time]
-        Simulate(q_algo, order_book_df, transaction_df, quantile,start_time = train_start_time+i*total_time, \
-             FeatureNum=FeatureNum, time_frame=total_time, numTrial=100)
-        if i%10==0:
-            print('This is the ',i,'th epoch')
-
-    test_order_book_df = orderbooks.drop(columns=[ 'trade_price', 'trade_size', 'trade_direction']).loc[test_start_time:test_end_time]
-    test_transaction_df = orderbooks[['trade_price', 'trade_size', 'trade_direction']].loc[test_start_time:test_end_time]
+    SL_reward_list=[]
 
 
-    reward = Simulate(q_algo, test_order_book_df, test_transaction_df, quantile, start_time = test_start_time \
-                      ,FeatureNum=FeatureNum,time_frame=total_time*epoch, numTrial=100, learn=False)
-    print(reward)
 
+    for epoch in [10,20,50,100,200,400]:
+        for starting_point in [1000]:
+            train_start_time = 0 + starting_point
+            train_end_time = total_time*epoch + starting_point
+
+            division = int((train_end_time-train_start_time)/total_time)
+            print('division:',division)
+
+            test_start_time = train_end_time
+            test_end_time = test_start_time+total_time*epoch
+
+            '''
+            quantile = get_quantile(f[['order_flow_buy', 'order_flow_sell', 'actual_spread', 'relative_spread',
+               'actual_mkt_imb', 'relative_mkt_imb','liq_imb','rel_mid_trend', 'vol','eff_spread']], [0.33, 0.66])
+            
+            '''
+
+            mdp = MDP.TradeMDP(totalVol=100, voLevel=5, timeLevel=timeLevel, priceFlex=4, timeGap=timeGap, FeatureLevel=3,
+                               FeatureNum=FeatureNum)
+
+            q_algo = MDP.QLearningAlgorithm(mdp, 50)
+
+            for i in range(division):
+
+                order_book_df = orderbooks.drop(columns=['trade_price', 'trade_size', 'trade_direction']).loc[starting_point+i*total_time:starting_point+(i+1)*total_time]
+                transaction_df = orderbooks[['trade_price', 'trade_size', 'trade_direction']].loc[starting_point+i * total_time: starting_point+(i + 1) * total_time]
+                Simulate(q_algo, order_book_df, transaction_df, quantile,start_time = train_start_time+i*total_time, \
+                     FeatureNum=FeatureNum, time_frame=total_time, numTrial=100)
+                if i%10==0:
+                    print('This is the ',i,'th epoch')
+
+            test_order_book_df = orderbooks.drop(columns=[ 'trade_price', 'trade_size', 'trade_direction']).loc[test_start_time:test_end_time]
+            test_transaction_df = orderbooks[['trade_price', 'trade_size', 'trade_direction']].loc[test_start_time:test_end_time]
+
+
+            RL_reward = Simulate(q_algo, test_order_book_df, test_transaction_df, quantile, start_time = test_start_time \
+                              ,FeatureNum=FeatureNum,time_frame=total_time*epoch, numTrial=100, learn=False)
+            RL_reward_list.append(RL_reward)
+
+            demo = orderbooks.values[test_start_time : test_end_time]
+            SL_reward = SL_Policy(50, demo)
+
+            SL_reward_list.append(SL_reward)
+
+    result=pd.DataFrame({'SL_reward':SL_reward_list,'RL_reward':RL_reward_list},index=[10,20,50,100,200,400] )
+
+    result.to_csv('result_epoch_new.csv')
