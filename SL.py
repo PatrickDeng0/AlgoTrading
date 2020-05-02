@@ -7,13 +7,14 @@ import numpy as np
 # Submit limit price order of Expected Price at the beginning
 # After certain time, deliver Market Order
 # Orderbooks: A list of orderbook rows
-def SL_Policy(totalVol, orderbooks):
+def SL_Policy(totalVol, orderbook_df):
+    orderbooks = orderbook_df.values
     init = util.OrderBook(row=orderbooks[0])
     exPrice = round(init.get_mid_price(), 2)
     order = util.SellOrder(totalVol, exPrice, init)
 
     # Simulate the Order
-    for orderbook in orderbooks[1:]:
+    for orderbook in orderbooks[1:-1]:
         order.SimTrade(util.OrderBook(row=orderbook))
         if order.termin:
             break

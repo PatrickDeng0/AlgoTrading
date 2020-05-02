@@ -31,7 +31,6 @@ class OrderBook:
     # Reconstruct the object of OrderBook from a np.array that contain a single row of full orderbook
     def load_orderbook(self, row):
         self.time = row[0]
-        self.depth = (len(row) - 4) // 4
 
         # Get the locations of asks and bids, then reconstruct the orderbook (Only if size > 0)
         ask_prices = np.arange(self.depth) * 4 + 1
@@ -45,8 +44,8 @@ class OrderBook:
         self.update()
 
         # trade price and trade size were wrong, I adjusted their absolute positions.
-        self.trade_price = row[-3]
-        self.trade_size = row[-2]
+        self.trade_price = row[22]
+        self.trade_size = row[23]
 
     # Update best bid and ask price, for convenience in comparison
     # And Update the history of this order book, finally output to a csv
@@ -65,6 +64,12 @@ class OrderBook:
             return self.ask_prices[0]
         else:
             return (self.ask_prices[0] + self.bid_prices[0]) / 2
+
+    def get_spread(self):
+        if len(self.ask_prices) > 0 and len(self.bid_prices) > 0:
+            return self.ask_prices[0] - self.bid_prices[0]
+        else:
+            return 0
 
     # Update OB due to quote
     def handle_quote(self, quote):
@@ -338,5 +343,5 @@ def preprocess_data(quote_dir, trade_dir, out_order_book_filename):
 if __name__ == '__main__':
     # testing
     data_dir = './'
-    preprocess_data(data_dir + 'GE_quotes.csv', data_dir + 'GE_trades.csv',
+    preprocess_data(data_dir + 'INTC_quote_20120621.csv', data_dir + 'INTC_trade_20120621.csv',
                     data_dir + 'orderbook_new.csv')

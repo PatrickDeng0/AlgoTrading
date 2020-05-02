@@ -14,7 +14,7 @@ class TradeMDP:
     #  of ticks between two operations (Const)
     # states: the whole set of states the MDP could have
     # T_states: the states grouped by the time level
-    # VolState: 0:None; 1:1-eachVol; 2:eachVol+1 - 2eachVol ...
+    # VolState: 0:None; 1:0-eachVol; 2:eachVol - 2eachVol ... (left open, right closed)
     def __init__(self, totalVol, voLevel, timeLevel, priceFlex, timeGap, FeatureLevel, FeatureNum):
         # 目前暂时把FeatureLevel统一设一个数字
 
@@ -41,52 +41,9 @@ class TradeMDP:
         # For terminal state, when the remain is 0, the state is None
         self.states.append(None)
 
-    def rank_calculation(self,func, orderbooks_df, quantile_df, transaction_df, need_transaction_df=False,
-                         *feature_name):
-        # calculate the rank of the feature
-        # length = len(feature_name)
-        feature_rank = []
-
-        if need_transaction_df:
-            calculated_feature = func(orderbooks_df, transaction_df)
-        else:
-            calculated_feature = func(orderbooks_df)
-
-        for name in feature_name:
-            temp = float(calculated_feature[name].iloc[-1])
-            q1, q2 = quantile_df[name].iloc[0], quantile_df[name].iloc[1]
-            rank = 1 if temp <= q1 else 2 if temp <= q2 else 3
-            feature_rank.append(rank)
-
-        return feature_rank
-    def startState(self,orderbooks_df,transaction_df,quantile_df):
-        #输入更正：增加一下第一个输入的orderbook和quantile_df，这样的话feature level就是正确的了
-
-
-        feature_name = quantile_df.columns
-        feature_rank = []
-        '''
-        feature_rank += rank_calculation(order_flow, orderbooks_df, quantile_df, transaction_df, True,
-                                         *feature_name[0:6])
-
-        feature_rank += rank_calculation(liquidity_imbalance, orderbooks_df, quantile_df, transaction_df, False,
-                                         feature_name[6])
-
-        feature_rank += rank_calculation(relative_mid_trend, orderbooks_df, quantile_df, transaction_df, False,
-                                         feature_name[7])
-
-        feature_rank += rank_calculation(volatility, orderbooks_df, quantile_df, transaction_df, False, feature_name[8])
-
-        feature_rank += rank_calculation(effective_spread, orderbooks_df, quantile_df, transaction_df, True,
-                                         feature_name[9])
-        '''
-        feature_rank += self.rank_calculation(volatility,orderbooks_df, quantile_df, \
-                                              transaction_df, False, feature_name[0]
-                                         )
-
-        digit = [0, self.totalVol] + feature_rank
-        digit = tuple(digit)
-        return self.JudgeState(digit,orderbooks_df,transaction_df,quantile_df)
+    def startState(self,orderbook_df, quantile_df):
+        digit = (0, self.totalVol)
+        return self.JudgeState(digit, orderbook_df, quantile_df)
 
     # Return set of actions possible from |state|.
     # You do not need to modify this function.
@@ -102,20 +59,33 @@ class TradeMDP:
             return [str(i) for i in range(-self.priceFlex, self.priceFlex + 1)]
 
     # Given the accurate digit, we decide the state it is in
-    def JudgeState(self, digit,orderbooks_df,transaction_df,quantile_df):
-        # 这个版本可以兼容state里有任意数量的feature
-        # 这里也改一改，把RL的rank_calculation加进来，升级一下这个函数的功能
-        volState = int(((digit[1] - 1) // self.eachVol) + 1)
+    # orderbok_df: a pd.Series object, only the current orderbook
+    # quantile_df: Quantiles we calculate in training dataset
+    def JudgeState(self, digit, orderbook_df, quantile_df):
+        def rank_calculation(orderbook_df, quantile_df):
+            # calculate the rank of the feature
+            feature_rank = []
+            feature_name = quantile_df.columns
 
-        if digit[1] == 0 or volState == 0:
+            for name in feature_name:
+                temp = float(orderbook_df[name])
+                q1, q2 = quantile_df[name].iloc[0], quantile_df[name].iloc[1]
+                rank = 1 if temp <= q1 else 2 if temp <= q2 else 3
+                feature_rank.append(rank)
+            return feature_rank
+
+        # Digit[1] == 0: Volume has been sold, mission finish
+        if digit[1] == 0 or orderbook_df is None:
             return
-
-        feature_name = quantile_df.columns
-        feature_rank = []
-        feature_rank += self.rank_calculation(volatility, orderbooks_df, quantile_df, transaction_df, False,
-                                         feature_name[0])
-        new_digit = tuple([digit[0], int(volState)] + feature_rank)
-        return new_digit
+        # When digit[1] == self.totalVol, if it intly divided by self.eachVol, it will have self.voLevel
+        # After +1, then it exceeds self.voLevel, which is too large
+        if digit[1] == self.totalVol:
+            volState = self.voLevel
+        else:
+            volState = digit[1] // self.eachVol + 1
+        feature_rank = rank_calculation(orderbook_df, quantile_df)
+        state = tuple([digit[0], volState] + feature_rank)
+        return state
 
 
 ############################################################
@@ -149,7 +119,6 @@ class QLearningAlgorithm:
         if state is None:
             return
         elif state[0] == self.mdp.timeLevel:
-
             return 'MO'
         elif learn and random.random() < self.explorationProb:
             return random.choice(self.mdp.Actions(state))
