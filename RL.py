@@ -18,30 +18,14 @@ def Simulate(rl, orderbooks_df, transaction_df, quantile_df, numTrial=50, learn=
             Order = util.SellOrder(remain, action, orderbook)
         else:
             try:
-                spread = (orderbook.ask_prices[0]-orderbook.bid_prices[0])
+                spread = (orderbook.ask_prices[0] - orderbook.bid_prices[0])
             except:
                 spread = 0
-            price = orderbook.ask_prices[0] - round(spread/4 * int(action),2)
+            price = orderbook.ask_prices[0] - round(spread / 4 * int(action), 2)
             Order = util.SellOrder(remain, price, orderbook)
         return Order
 
-    def rank_calculation(func, orderbooks_df, quantile_df, transaction_df, need_transaction_df, *feature_name):
-        # calculate the rank of the feature
-        # length = len(feature_name)
-        feature_rank = []
 
-        if need_transaction_df:
-            calculated_feature = func(orderbooks_df, transaction_df)
-        else:
-            calculated_feature = func(orderbooks_df)
-
-        for name in feature_name:
-            temp = float(calculated_feature[name].iloc[-1])
-            q1, q2 = quantile_df[name].iloc[0], quantile_df[name].iloc[1]
-            rank = 1 if temp <= q1 else 2 if temp <= q2 else 3
-            feature_rank.append(rank)
-
-        return feature_rank
 
     # Get the Reward and Newstate after taking action in Simulate with Sects
     def ActEnv(rl, iter, volume, action, orderbooks, orderbooks_df, quantile_df):
@@ -57,46 +41,18 @@ def Simulate(rl, orderbooks_df, transaction_df, quantile_df, numTrial=50, learn=
         else:
             order.SimTrade(orderbooks[0])
 
-
         remain = volume - order.fill
 
         # Different Reward Calculate by Different Mode
 
         reward = order.turnover - start_mid * order.fill
 
-        # Notice that FeatureNum !=  feature function number
-
-
-        if iter != rl.mdp.timeLevel:
-
-            feature_name = quantile_df.columns
-
-            feature_rank = []
-            '''
-            feature_rank += rank_calculation(order_flow, orderbooks_df, quantile_df, transaction_df, True,
-                                             *feature_name[0:6])
-
-            feature_rank += rank_calculation(liquidity_imbalance, orderbooks_df, quantile_df, transaction_df, False,
-                                             feature_name[6])
-
-            feature_rank += rank_calculation(relative_mid_trend, orderbooks_df, quantile_df, transaction_df, False,
-                                             feature_name[7])
-
-            feature_rank += rank_calculation(volatility, orderbooks_df, quantile_df, transaction_df, False, feature_name[8])
-
-            feature_rank += rank_calculation(effective_spread, orderbooks_df, quantile_df, transaction_df, True,
-                                             feature_name[9])
-            
-            '''
-            feature_rank += rank_calculation(volatility, orderbooks_df, quantile_df, transaction_df, False,
-                                             feature_name[0])
-
 
         # Newstate Define
         if iter == rl.mdp.timeLevel:
             newState = None
         else:
-            newState = rl.mdp.JudgeState([iter + 1, remain] + feature_rank)
+            newState = rl.mdp.JudgeState([iter + 1, remain],orderbooks_df,transaction_df,quantile_df)
         return reward, newState, remain, order
 
     orderbooks = orderbooks_df.values
@@ -110,11 +66,13 @@ def Simulate(rl, orderbooks_df, transaction_df, quantile_df, numTrial=50, learn=
     # When we simulate a buy process for numTrial time
     for j in range(numTrial):
         remain = rl.mdp.totalVol
-        state = rl.mdp.startState()
+        first_orderbook=orderbooks_df.iloc[0 * rl.mdp.timeGap: 1 * rl.mdp.timeGap]
+        first_transaction=transaction_df.iloc[0 * rl.mdp.timeGap: 1 * rl.mdp.timeGap]
+        state = rl.mdp.startState(first_orderbook,first_transaction,quantile_df)
         sequences = []
 
         # Sects: a list contains series of orderbooks
-        for i in range(  rl.mdp.timeLevel + 1):
+        for i in range(1,rl.mdp.timeLevel + 1):
             if state is None:
                 break
             if i == rl.mdp.timeLevel:
@@ -123,10 +81,10 @@ def Simulate(rl, orderbooks_df, transaction_df, quantile_df, numTrial=50, learn=
                 action = 'MO'
             else:
 
-                ob_data = orderbooks[i * rl.mdp.timeGap :  (i + 1) * rl.mdp.timeGap]
+                ob_data = orderbooks[i * rl.mdp.timeGap:  (i + 1) * rl.mdp.timeGap]
 
                 Sects = [util.OrderBook(row=ob) for ob in ob_data]
-                Sects_df = orderbooks_df.iloc[i * rl.mdp.timeGap: (i+1) * rl.mdp.timeGap]
+                Sects_df = orderbooks_df.iloc[i * rl.mdp.timeGap: (i + 1) * rl.mdp.timeGap]
 
                 action = rl.getAction(state, learn)
 
@@ -141,12 +99,12 @@ def Simulate(rl, orderbooks_df, transaction_df, quantile_df, numTrial=50, learn=
         #  (for updating while using the updating results before)
         if learn:
             sequences.reverse()
-            r=0
+            r = 0
             for sequence in sequences:
                 state, action, reward, newState = sequence
                 rl.updateQ(state, action, reward, newState)
-                r+=reward
-            #print('reward:',r)
+                r += reward
+            # print('reward:',r)
 
         else:
             # We are testing, so return the reward
@@ -167,7 +125,7 @@ if __name__ == '__main__':
     timeGap = 10
     timeLevel = 5
     total_time = timeLevel * timeGap
-    epoch=200
+    epoch = 200
 
     # orderbooks only appears here
     orderbooks = pd.read_csv('orderbook_CPE.csv')
@@ -187,8 +145,10 @@ if __name__ == '__main__':
                        FeatureNum=FeatureNum)
     q_algo = MDP.QLearningAlgorithm(mdp, 50)
 
+
     def spliter(df, total_time, num):
-        return df.loc[num*total_time: (i+1)*total_time]
+        return df.loc[num * total_time: (i + 1) * total_time]
+
 
     # Training
     for i in range(train_epochs_num):
@@ -197,7 +157,8 @@ if __name__ == '__main__':
         Simulate(q_algo, ob_piece, trx_piece, quantile, numTrial=100, learn=True)
 
     # Test
-    RL_reward = []; SL_reward = []
+    RL_reward = [];
+    SL_reward = []
     for i in range(train_epochs_num, num_epochs):
         ob_piece = spliter(order_book_df, total_time, i)
         trx_piece = spliter(transaction_df, total_time, i)
@@ -206,4 +167,5 @@ if __name__ == '__main__':
         RL_reward.append(Simulate(q_algo, ob_piece, trx_piece, quantile, numTrial=1, learn=False))
         SL_reward.append(SL_Policy(50, ob_all_piece))
 
-    RL_reward = np.array(RL_reward); SL_reward = np.array(SL_reward)
+    RL_reward = np.array(RL_reward);
+    SL_reward = np.array(SL_reward)
