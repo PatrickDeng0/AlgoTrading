@@ -46,7 +46,7 @@ class TradeMDP:
         # calculate the rank of the feature
         # length = len(feature_name)
         feature_rank = []
-
+        feature = []
         if need_transaction_df:
             calculated_feature = func(orderbooks_df, transaction_df)
         else:
@@ -54,17 +54,19 @@ class TradeMDP:
 
         for name in feature_name:
             temp = float(calculated_feature[name].iloc[-1])
+            feature.append(temp)
             q1, q2 = quantile_df[name].iloc[0], quantile_df[name].iloc[1]
             rank = 1 if temp <= q1 else 2 if temp <= q2 else 3
             feature_rank.append(rank)
 
-        return feature_rank
+
+        return [feature,feature_rank]
     def startState(self,orderbooks_df,transaction_df,quantile_df):
         #输入更正：增加一下第一个输入的orderbook和quantile_df，这样的话feature level就是正确的了
 
 
         feature_name = quantile_df.columns
-        feature_rank = []
+        feature = []
         '''
         feature_rank += rank_calculation(order_flow, orderbooks_df, quantile_df, transaction_df, True,
                                          *feature_name[0:6])
@@ -80,11 +82,11 @@ class TradeMDP:
         feature_rank += rank_calculation(effective_spread, orderbooks_df, quantile_df, transaction_df, True,
                                          feature_name[9])
         '''
-        feature_rank += self.rank_calculation(volatility,orderbooks_df, quantile_df, \
-                                              transaction_df, False, feature_name[0]
-                                         )
+        feature += self.rank_calculation(volatility,orderbooks_df, quantile_df, \
+                                              transaction_df, False, feature_name[0])[0]
 
-        digit = [0, self.totalVol] + feature_rank
+
+        digit = [0, self.totalVol] + feature
         digit = tuple(digit)
         return self.JudgeState(digit,orderbooks_df,transaction_df,quantile_df)
 
@@ -113,7 +115,7 @@ class TradeMDP:
         feature_name = quantile_df.columns
         feature_rank = []
         feature_rank += self.rank_calculation(volatility, orderbooks_df, quantile_df, transaction_df, False,
-                                         feature_name[0])
+                                         feature_name[0])[1]
         new_digit = tuple([digit[0], int(volState)] + feature_rank)
         return new_digit
 
