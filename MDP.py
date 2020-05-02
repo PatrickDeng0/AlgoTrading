@@ -1,5 +1,6 @@
 import random
 import numpy as np
+from features import *
 
 
 ######################################
@@ -40,10 +41,52 @@ class TradeMDP:
         # For terminal state, when the remain is 0, the state is None
         self.states.append(None)
 
-    def startState(self):
-        digit = [0, self.totalVol] + [self.FeatureLevel] * self.FeatureNum
+    def rank_calculation(self,func, orderbooks_df, quantile_df, transaction_df, need_transaction_df=False,
+                         *feature_name):
+        # calculate the rank of the feature
+        # length = len(feature_name)
+        feature_rank = []
+
+        if need_transaction_df:
+            calculated_feature = func(orderbooks_df, transaction_df)
+        else:
+            calculated_feature = func(orderbooks_df)
+
+        for name in feature_name:
+            temp = float(calculated_feature[name].iloc[-1])
+            q1, q2 = quantile_df[name].iloc[0], quantile_df[name].iloc[1]
+            rank = 1 if temp <= q1 else 2 if temp <= q2 else 3
+            feature_rank.append(rank)
+
+        return feature_rank
+    def startState(self,orderbooks_df,transaction_df,quantile_df):
+        #输入更正：增加一下第一个输入的orderbook和quantile_df，这样的话feature level就是正确的了
+
+
+        feature_name = quantile_df.columns
+        feature_rank = []
+        '''
+        feature_rank += rank_calculation(order_flow, orderbooks_df, quantile_df, transaction_df, True,
+                                         *feature_name[0:6])
+
+        feature_rank += rank_calculation(liquidity_imbalance, orderbooks_df, quantile_df, transaction_df, False,
+                                         feature_name[6])
+
+        feature_rank += rank_calculation(relative_mid_trend, orderbooks_df, quantile_df, transaction_df, False,
+                                         feature_name[7])
+
+        feature_rank += rank_calculation(volatility, orderbooks_df, quantile_df, transaction_df, False, feature_name[8])
+
+        feature_rank += rank_calculation(effective_spread, orderbooks_df, quantile_df, transaction_df, True,
+                                         feature_name[9])
+        '''
+        feature_rank += self.rank_calculation(volatility,orderbooks_df, quantile_df, \
+                                              transaction_df, False, feature_name[0]
+                                         )
+
+        digit = [0, self.totalVol] + feature_rank
         digit = tuple(digit)
-        return self.JudgeState(digit)
+        return self.JudgeState(digit,orderbooks_df,transaction_df,quantile_df)
 
     # Return set of actions possible from |state|.
     # You do not need to modify this function.
@@ -59,12 +102,19 @@ class TradeMDP:
             return [str(i) for i in range(-self.priceFlex, self.priceFlex + 1)]
 
     # Given the accurate digit, we decide the state it is in
-    def JudgeState(self, digit):
+    def JudgeState(self, digit,orderbooks_df,transaction_df,quantile_df):
         # 这个版本可以兼容state里有任意数量的feature
+        # 这里也改一改，把RL的rank_calculation加进来，升级一下这个函数的功能
         volState = int(((digit[1] - 1) // self.eachVol) + 1)
+
         if digit[1] == 0 or volState == 0:
             return
-        new_digit = tuple([digit[0], int(volState)] + list(digit[2:]))
+
+        feature_name = quantile_df.columns
+        feature_rank = []
+        feature_rank += self.rank_calculation(volatility, orderbooks_df, quantile_df, transaction_df, False,
+                                         feature_name[0])
+        new_digit = tuple([digit[0], int(volState)] + feature_rank)
         return new_digit
 
 
@@ -72,7 +122,7 @@ class TradeMDP:
 # Q-learning Algo of a certain MDP problem
 # explorationProb: the epsilon value indicating how frequently the policy returns a random action
 class QLearningAlgorithm:
-    def __init__(self, mdp, exploreStep, explorationProb=0.2, ):
+    def __init__(self, mdp, exploreStep, explorationProb=0.4, ):
         self.mdp = mdp
         self.init_prob = explorationProb
         self.explorationProb = explorationProb
@@ -89,6 +139,7 @@ class QLearningAlgorithm:
 
     # Return the Q function
     def getQ(self, state, action):
+        #print('getQ:',self.QGrid[(state, action)])
         return self.QGrid[(state, action)]
 
     # This algorithm will produce an action given a state.
@@ -98,6 +149,7 @@ class QLearningAlgorithm:
         if state is None:
             return
         elif state[0] == self.mdp.timeLevel:
+
             return 'MO'
         elif learn and random.random() < self.explorationProb:
             return random.choice(self.mdp.Actions(state))
