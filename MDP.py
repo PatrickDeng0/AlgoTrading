@@ -14,7 +14,8 @@ class TradeMDP:
     #  of ticks between two operations (Const)
     # states: the whole set of states the MDP could have
     # T_states: the states grouped by the time level
-    # VolState: 0:None; 1:0-eachVol; 2:eachVol - 2eachVol ... (left open, right closed)
+    # VolState: 0:None; 1:0-eachVol; 2:eachVol - 2eachVol ...
+    # Take care: when volume=totalVol, VolState = voLevel
     def __init__(self, totalVol, voLevel, timeLevel, priceFlex, timeGap, FeatureLevel, FeatureNum):
         # 目前暂时把FeatureLevel统一设一个数字
 
@@ -92,10 +93,10 @@ class TradeMDP:
 # Q-learning Algo of a certain MDP problem
 # explorationProb: the epsilon value indicating how frequently the policy returns a random action
 class QLearningAlgorithm:
-    def __init__(self, mdp, exploreStep, explorationProb=0.4, ):
+    def __init__(self, mdp, exploreStep=100, init_prob=0.8, final_prob=0.1):
         self.mdp = mdp
-        self.init_prob = explorationProb
-        self.explorationProb = explorationProb
+        self.init_prob = init_prob
+        self.explorationProb = init_prob
         self.numIters = {}
         self.QGrid = {}
         for state in mdp.states:
@@ -105,7 +106,7 @@ class QLearningAlgorithm:
         # Increase only in simulation, and exploration prob changes
         self.totalIter = 0
         self.explorationStep = exploreStep
-        self.final_prob = 0.01
+        self.final_prob = final_prob
 
     # Return the Q function
     def getQ(self, state, action):

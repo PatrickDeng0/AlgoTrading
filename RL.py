@@ -91,7 +91,7 @@ def Simulate(rl, orderbooks_df, quantile_df, numTrial=50, learn=True):
     rl.update_prob()
 
 
-if __name__ == '__main__':
+def main(numTrial):
     # Usage: Currently, we cannot take too much features
     # If one wishes to run directly, we only apply 'volatility' and 'order_flow' in features.
     data_dir = './'
@@ -101,10 +101,9 @@ if __name__ == '__main__':
     # First timeLevel * timeGap time: time for limit order
     # Last 1 : time for market order
     total_time = timeLevel * timeGap + 1
-    epoch = 200
 
     # orderbooks only appears here
-    raw_orderbooks = pd.read_csv('orderbook_new.csv')
+    raw_orderbooks = pd.read_csv(data_dir + 'orderbook_new.csv')
     lag = 50
     f = all_features(raw_orderbooks, lag=lag)
     orderbooks_df = pd.concat([raw_orderbooks, f], axis=1).iloc[(lag-1):]
@@ -120,24 +119,34 @@ if __name__ == '__main__':
     # Initilize MDP
     mdp = MDP.TradeMDP(totalVol=100, voLevel=5, timeLevel=timeLevel, priceFlex=4, timeGap=timeGap, FeatureLevel=3,
                        FeatureNum=FeatureNum)
-    q_algo = MDP.QLearningAlgorithm(mdp, 50)
+    q_algo = MDP.QLearningAlgorithm(mdp, exploreStep=200, init_prob=0.8, final_prob=0.1)
 
     def spliter(df, total_time, num):
         return df.loc[num * total_time: (i + 1) * total_time]
 
     # Training
+    RL_train_reward = []
+    SL_train_reward = []
     for i in range(train_epochs_num):
         ob_piece = spliter(orderbooks_df, total_time, i)
-        Simulate(q_algo, ob_piece, quantile, numTrial=2, learn=True)
+        Simulate(q_algo, ob_piece, quantile, numTrial=numTrial, learn=True)
+        RL_train_reward.append(Simulate(q_algo, ob_piece, quantile, numTrial=1, learn=False))
+        SL_train_reward.append(SL_Policy(50, ob_piece))
 
     # Test
-    RL_reward = []
-    SL_reward = []
+    RL_test_reward = []
+    SL_test_reward = []
     for i in range(train_epochs_num, num_epochs):
         ob_piece = spliter(orderbooks_df, total_time, i)
-        RL_reward.append(Simulate(q_algo, ob_piece, quantile, numTrial=1, learn=False))
-        SL_reward.append(SL_Policy(50, ob_piece))
+        RL_test_reward.append(Simulate(q_algo, ob_piece, quantile, numTrial=1, learn=False))
+        SL_test_reward.append(SL_Policy(50, ob_piece))
 
-    RL_reward = np.array(RL_reward)
-    SL_reward = np.array(SL_reward)
-    print(RL_reward.mean(), print(SL_reward.mean()))
+    RL_train_reward = np.array(RL_train_reward)
+    RL_test_reward = np.array(RL_test_reward)
+    SL_train_reward = np.array(SL_train_reward)
+    SL_test_reward = np.array(SL_test_reward)
+    return RL_train_reward, RL_test_reward, SL_train_reward, SL_test_reward
+
+
+if __name__ == '__main__':
+    RL_train_reward, RL_test_reward, SL_train_reward, SL_test_reward = main(numTrial=10)
