@@ -92,7 +92,7 @@ def Simulate(rl, orderbooks_df, quantile_df, numTrial=50, learn=True):
 
 def data_prepare(symbol, total_time):
     # orderbooks only appears here
-    raw_orderbooks = pd.read_csv('./ob_{}.csv'.format(symbol))
+    raw_orderbooks = pd.read_csv('./{}_ob_20190610.csv'.format(symbol))
     lag = 50
     f = all_features(raw_orderbooks, lag=lag)
     orderbooks_df = pd.concat([raw_orderbooks, f], axis=1).iloc[(lag - 1):]
@@ -152,6 +152,7 @@ def main(symbol, numTrial):
     return RL_ontrain_reward, RL_train_reward, RL_test_reward, \
            SL_ontrain_reward, SL_train_reward, SL_test_reward, q_algo
 
+
 if __name__ == '__main__':
     RL_ontrain_reward, RL_train_reward, RL_test_reward, \
-    SL_ontrain_reward, SL_train_reward, SL_test_reward, q_algo = main(symbol='INTC', numTrial=100)
+    SL_ontrain_reward, SL_train_reward, SL_test_reward, q_algo = main(symbol='INTC', numTrial=10)
